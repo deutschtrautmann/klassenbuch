@@ -27,13 +27,13 @@
   }
   body{ padding: var(--pad); max-width:760px; margin:0 auto; }
   h1,h2{
-    font-size:var(--fs2); font-weight:700; margin:0 0 12px 0; color:#999;
+    font-size:var(--fs2); font-weight:700; margin:0 0 12px 0; color:#777;
   }
   #titel{ font-size:var(--fs1); line-height:1.35; }
   a{ color:#0645AD; text-decoration:underline; }
   button, .btn{
-    font-size:var(--fs1); font-family:inherit; color:#999; font-weight:700;
-    background:linear-gradient(180deg, #ffffff, #ececec); border:2px solid #999; border-radius:10px;
+    font-size:var(--fs1); font-family:inherit; color:#777; font-weight:700;
+    background:linear-gradient(180deg, #ffffff, #ececec); border:2px solid #777; border-radius:10px;
     padding:10px 14px; cursor:pointer; min-height:44px;
     box-shadow:0 1px 0 rgba(0,0,0,.15), 0 3px 6px rgba(0,0,0,.12),
       inset 0 1px 0 rgba(255,255,255,.9), inset 0 -2px 3px rgba(0,0,0,.06);
@@ -52,18 +52,18 @@
   button:disabled:hover{ background:linear-gradient(180deg, #ffffff, #ececec); color:#000; }
   input, textarea{
     font-family:inherit; font-size:var(--fs1); color:#000; background:#fff;
-    border:1px solid #000; border-radius:2px; padding:8px; width:100%;
+    border:1px solid #000; border-radius:8px; padding:8px; width:100%;
   }
   textarea{ resize:none; overflow:hidden; min-height:2.6em; }
   .feld-anzeige{
     font-family:inherit; font-size:var(--fs1); color:#000; background:#fff;
-    border:1px solid #000; border-radius:2px; padding:8px; width:100%;
+    border:1px solid #000; border-radius:8px; padding:8px; width:100%;
     min-height:2.6em; white-space:pre-wrap; word-break:break-word; cursor:text;
   }
   .feld-anzeige:empty:before{ content:attr(data-placeholder); opacity:.5; }
   .feld-anzeige a{ color:#0645AD; text-decoration:underline; cursor:pointer; -webkit-tap-highlight-color:transparent; }
   .feld-anzeige a:focus, .feld-anzeige a:active{ outline:none; }
-  label{ font-size:var(--fs1); font-weight:700; display:block; margin:12px 0 4px; color:#999; }
+  label{ font-size:var(--fs1); font-weight:700; display:block; margin:12px 0 4px; color:#777; }
   .row{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
   .row > *{ flex:1 1 160px; }
   hr{ border:none; border-top:1px solid #000; margin:18px 0; }
@@ -77,7 +77,7 @@
   /* Credit-Badge (Urheberhinweis, dezent, Ecke unten rechts) */
   #kb-credit{
     position:fixed; right:6px; bottom:4px; z-index:5;
-    font-size:9px; line-height:1.2; color:#999; opacity:.55;
+    font-size:9px; line-height:1.2; color:#777; opacity:.55;
     pointer-events:none; user-select:none; font-family:inherit;
   }
   #kb-credit a{ color:inherit; text-decoration:none; pointer-events:auto; }
@@ -101,31 +101,31 @@
   }
   #login-form .pw-augen:hover{ background:none; color:#000; box-shadow:none; }
   #login-form .pw-augen:active{ transform:translateY(-50%); box-shadow:none; }
-  .login-fehler{ color:#999; font-weight:700; margin-top:8px; border:1px solid #000; padding:6px 8px; border-radius:2px; }
+  .login-fehler{ color:#777; font-weight:700; margin-top:8px; border:1px solid #000; padding:6px 8px; border-radius:8px; }
   #login-form button{ width:100%; }
   #login-form button + button{ margin-top:8px; }
   #btn-standort-kasumigaseki, #btn-standort-sagami-ono{ font-weight:700; }
 
   /* Kurs-Liste */
   #liste-items div.kurs-item{
-    border:1px solid #000; border-radius:2px; padding:10px 12px; margin-bottom:8px;
+    border:1px solid #000; border-radius:8px; padding:10px 12px; margin-bottom:8px;
     display:flex; align-items:center; justify-content:space-between; gap:10px;
   }
   #liste-items div.kurs-item:hover{ background:var(--kurs-hell, #f2f2f2); }
   #liste-items .kurs-klick{ cursor:pointer; flex:1 1 auto; min-width:0; }
-  .kurs-item .name{ font-size:var(--fs2); font-weight:700; color:#999; }
+  .kurs-item .name{ font-size:var(--fs2); font-weight:700; color:#777; }
   .kurs-item .sub{ color:#000; font-size:var(--fs1); margin-top:2px; }
   .kurs-item .btn-kurs-loeschen-liste{ flex:0 0 auto; }
   .leer{ font-style:italic; }
 
   /* Kursdaten-Kopf */
-  #kurs-meta-box{ border:2px solid #999; border-radius:2px; padding:12px; margin-bottom:16px; }
-  #kurs-meta-box .name{ font-size:var(--fs2); font-weight:700; margin-bottom:6px; color:#999; }
+  #kurs-meta-box{ border:2px solid #777; border-radius:8px; padding:12px; margin-bottom:16px; }
+  #kurs-meta-box .name{ font-size:var(--fs2); font-weight:700; margin-bottom:6px; color:#777; }
   #kurs-meta-box .zeile{ margin:2px 0; }
-  #kurs-meta-box .zeile b{ color:#999; }
+  #kurs-meta-box .zeile b{ color:#777; }
 
   /* Einträge (zumpad-artige Blöcke) */
-  .eintrag{ border:3px solid #999; border-radius:2px; padding:12px; margin-bottom:14px; position:relative; }
+  .eintrag{ border:3px solid #777; border-radius:8px; padding:12px; margin-bottom:14px; position:relative; }
   .eintrag .kopf{ display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:8px; }
   .eintrag > .feldbox:first-of-type .feld-anzeige,
   .eintrag > .feldbox:first-of-type .feld-edit{ padding-right:50px; }
@@ -158,7 +158,7 @@
   @media (hover:none){
     #liste-items div.kurs-item:hover{ background:#fff; }
     button:hover, .btn:hover{
-      background:linear-gradient(180deg, #ffffff, #ececec); color:#999;
+      background:linear-gradient(180deg, #ffffff, #ececec); color:#777;
       box-shadow:0 1px 0 rgba(0,0,0,.15), 0 3px 6px rgba(0,0,0,.12),
         inset 0 1px 0 rgba(255,255,255,.9), inset 0 -2px 3px rgba(0,0,0,.06);
     }
