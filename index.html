@@ -1,16 +1,9 @@
 <!DOCTYPE html>
-<!--
-  Klassenbuch — © 2026 deutschtrautmann
-  Alle Rechte vorbehalten. Keine Weitergabe, kein Weiterbetrieb unter eigenem Namen
-  oder auf anderen Domains ohne ausdrückliche Erlaubnis der Autorin/des Autors.
--->
 <html lang="de">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
 <title>Klassenbuch</title>
-<meta name="author" content="deutschtrautmann">
-<meta name="copyright" content="© 2026 deutschtrautmann — alle Rechte vorbehalten">
 <style>
   :root{
     --fs1:16px;   /* Grundgröße */
@@ -72,16 +65,6 @@
   [hidden]{ display:none !important; }
   body:not(.admin-unlocked) .admin-only{ display:none !important; }
   body:not(.ansicht-liste) .admin-seite{ display:none !important; }
-  .kurs-checkbox{ flex:0 0 auto; width:22px; height:22px; cursor:pointer; }
-
-  /* Credit-Badge (Urheberhinweis, dezent, Ecke unten rechts) */
-  #kb-credit{
-    position:fixed; right:6px; bottom:4px; z-index:5;
-    font-size:9px; line-height:1.2; color:#777; opacity:.55;
-    pointer-events:none; user-select:none; font-family:inherit;
-  }
-  #kb-credit a{ color:inherit; text-decoration:none; pointer-events:auto; }
-  #kb-credit a:hover{ opacity:1; text-decoration:underline; color:#000; }
 
   /* Login */
   #login-overlay{
@@ -167,8 +150,6 @@
 </head>
 <body class="ansicht-liste">
 
-<div id="kb-credit"><a href="https://deutschtrautmann.github.io/tafel/" target="_blank" rel="noopener">© deutschtrautmann</a></div>
-
 <div id="login-overlay">
   <form id="login-form">
     <h1 style="margin-bottom:16px;">Zugang zu den Kursen</h1>
@@ -188,11 +169,22 @@
 <header>
   <h1 id="titel">Kursliste</h1>
   <div class="top-actions">
-    <button id="btn-neu-oeffnen">+ Neuer Kurs</button>
-    <button id="btn-admin-toggle" class="btn admin-seite" title="Administratorzugang für die Kurs-Löschfunktion">Administrator</button>
-    <button id="btn-daten-speichern" class="admin-seite" title="Markierte Kurse als PDF speichern">Daten speichern</button>
+    <button id="btn-neu-oeffnen" class="admin-seite admin-only">+ Neuer Kurs</button>
+    <button id="btn-admin-toggle" class="btn admin-seite" title="Administrationszugang für die Kurs-Löschfunktion">Administration</button>
+    <button id="btn-datensicherung" class="admin-seite admin-only" title="Alle Kursdaten dieses Standorts als Datei sichern">Datensicherung</button>
+    <button id="btn-wiederherstellung" class="admin-seite admin-only" title="Datensicherungs-Datei einlesen">Wiederherstellung</button>
+    <input type="file" id="datei-wiederherstellung" accept="application/json,.json" hidden>
   </div>
 </header>
+
+<div id="wiederherstellung-vorschau" class="admin-seite admin-only" hidden>
+  <h2>Vorschau: Wiederherstellung</h2>
+  <p id="wiederherstellung-info"></p>
+  <div id="wiederherstellung-liste"></div>
+  <div class="top-actions" style="margin-top:10px;">
+    <button id="btn-wiederherstellung-abbrechen">Abbrechen</button>
+  </div>
+</div>
 
 <!-- Ansicht 1: Kurs-Liste -->
 <div id="view-liste">
@@ -231,13 +223,15 @@
 
 <!-- Ansicht 3: Kurs-Detail (Zumpad-artig) -->
 <div id="view-kurs" hidden>
-  <button id="btn-zurueck">← Zurück zur Liste</button>
+  <div class="top-actions" style="justify-content:space-between;">
+    <button id="btn-zurueck">← Zurück zur Liste</button>
+    <div class="top-actions">
+      <button id="btn-meta-bearbeiten" class="btn admin-only">Kursübersicht bearbeiten</button>
+      <button id="btn-kursdaten-speichern" class="btn">PDF herunterladen</button>
+    </div>
+  </div>
   <hr>
   <div id="kurs-meta-box"></div>
-  <div class="top-actions">
-    <button id="btn-meta-bearbeiten" class="btn">Kursdaten bearbeiten</button>
-    <button id="btn-kursdaten-speichern" class="btn">Kursdaten speichern</button>
-  </div>
   <div id="kurs-meta-edit" hidden style="margin-top:10px;">
     <label for="e-name">Kursname</label>
     <input id="e-name" type="text">
@@ -266,9 +260,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-<script>/* =====================================================================
+<script>
+/* =====================================================================
    Klassenbuch – schlanke, Zumpad-artige Oberfläche auf Firebase RTDB.
-   © 2026 deutschtrautmann — alle Rechte vorbehalten.
    Datenmodell (bewusst kurze Schlüssel, um Speicher/Bandbreite zu sparen):
      kb/{standort}/m/{kursId}         = { n:Name, t:Teilnehmer, r:Raum, v:von, b:bis }
      kb/{standort}/e/{kursId}/{eid}   = { d:Datum, k:Kursleiter, i:Inhalt, h:Hausaufgaben }
@@ -282,6 +276,613 @@
      geschrieben (kein Überschreiben ganzer Objekte) und mit 600ms
      Verzögerung nach der letzten Eingabe gesendet.
    ===================================================================== */
-const _kbOrigin=Object.freeze({owner:"deutschtrautmann",build:"2026-09"});!function(){try{console.log("%cKlassenbuch © "+_kbOrigin.owner,"color:#888;font-size:10px;padding:2px 0;")}catch(e){}}();const firebaseConfig={apiKey:"AIzaSyAMi5PCfJ-Fwg20-urkTvpvVkWi7LI0JQo",databaseURL:"https://interaktive-tafel-default-rtdb.europe-west1.firebasedatabase.app",projectId:"interaktive-tafel",appId:"1:761401562204:web:02796fca95e0496c1cc299"};firebase.initializeApp(firebaseConfig);const db=firebase.database();let kurseCache={},currentKursId=null,entriesCache={},renderPending=!1,standort=null;const STANDORT_ANZEIGE={kasumigaseki:"Kasumigaseki","sagami-ono":"Sagami‑Ōno"};function kbM(){return`kb/${standort}/m`}function kbE(e){return`kb/${standort}/e/${e}`}const $=e=>document.getElementById(e);function showView(e){$("view-liste").hidden="liste"!==e,$("view-neu").hidden="neu"!==e,$("view-kurs").hidden="kurs"!==e,document.body.classList.toggle("ansicht-liste","liste"===e),$("titel").hidden="kurs"===e,$("btn-neu-oeffnen").hidden="kurs"===e}function escHtml(e){return String(e??"").replace(/[&<>"']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[e]))}function fmtDatum(e){if(!e)return"";const[t,n,r]=e.split("-");return r&&n&&t?`${r}.${n}.${t}`:e}function autoGrow(e){e.style.height="auto",e.style.height=e.scrollHeight+2+"px"}function linkify(e){return e.replace(/(\bhttps?:\/\/[^\s<]+|\bwww\.[^\s<]+\b)/gi,e=>`<a href="${/^https?:\/\//i.test(e)?e:"https://"+e}" target="_blank" rel="noopener noreferrer">${e}</a>`)}const KURS_FARBEN=["#e64980","#1c7ed6","#2f9e44","#f08c00","#7048e8","#0ca678","#e8590c","#1098ad","#c2255c","#5c940d"];function hashColor(e){let t=0;for(let n=0;n<e.length;n++)t=31*t+e.charCodeAt(n)>>>0;return KURS_FARBEN[t%KURS_FARBEN.length]}function hexZuHell(e,t=.85){const n=parseInt(e.slice(1,3),16),r=parseInt(e.slice(3,5),16),i=parseInt(e.slice(5,7),16),a=e=>Math.round(e+(255-e)*t);return`rgb(${a(n)},${a(r)},${a(i)})`}function segmentiereLinks(e){const t=/(\bhttps?:\/\/\S+|\bwww\.\S+\b)/gi,n=[];let r,i=0;for(;r=t.exec(e);){r.index>i&&n.push({text:e.slice(i,r.index),link:!1});const t=r[0],a=/^https?:\/\//i.test(t)?t:"https://"+t;n.push({text:t,link:!0,href:a}),i=r.index+t.length}return i<e.length&&n.push({text:e.slice(i),link:!1}),n.length?n:[{text:"",link:!1}]}function debounce(e,t){const n=new Map;return(r,...i)=>{clearTimeout(n.get(r)),n.set(r,setTimeout(()=>e(...i),t))}}function starteKursListe(){db.ref(kbM()).on("value",e=>{kurseCache=e.val()||{},renderKursListe()},e=>{$("liste-items").innerHTML='<p class="leer">Fehler beim Laden: '+escHtml(e.message)+'<br>Vermutlich erlauben die Firebase-Security-Rules den Lesezugriff auf "kb" (noch) nicht.</p>'})}function renderKursListe(){const e=$("liste-items"),t=Object.keys(kurseCache).sort().reverse();0!==t.length?(e.innerHTML=t.map(e=>{const t=kurseCache[e],n=(t.t||"").split("\n").map(e=>e.trim()).filter(Boolean),r=n.length?escHtml(n.join(", ")):"keine Teilnehmende eingetragen",i=[fmtDatum(t.v),fmtDatum(t.b)].filter(Boolean).join(" – "),a=t.c??0,s=`${a} ${1===a?"Eintrag":"Einträge"}`,l=hashColor(e);return`<div class="kurs-item" data-id="${e}" style="border-color:${l}; border-width:3px; --kurs-hell:${hexZuHell(l)};">\n      <input type="checkbox" class="kurs-checkbox" data-id="${e}" title="Für „Daten speichern" markieren">\n      <div class="kurs-klick">\n        <div class="name">${escHtml(t.n||"(ohne Namen)")}</div>\n        <div class="sub">${r}${t.r?" · Raum "+escHtml(t.r):""}${i?" · "+escHtml(i):""} · ${s}</div>\n      </div>\n      <button class="btn-kurs-loeschen-liste admin-only" title="Kurs löschen">✕ Löschen</button>\n    </div>`}).join(""),e.querySelectorAll(".kurs-klick").forEach(e=>{e.addEventListener("click",()=>openKurs(e.closest(".kurs-item").dataset.id))}),e.querySelectorAll(".btn-kurs-loeschen-liste").forEach(e=>{e.addEventListener("click",t=>{t.stopPropagation(),kursLoeschen(e.closest(".kurs-item").dataset.id)})})):e.innerHTML='<p class="leer">Noch keine Kurse angelegt. Mit „+ Neuer Kurs" beginnen.</p>'}function kursLoeschen(e){if(!adminUnlocked)return void alert('Die Löschfunktion ist gesperrt. Bitte zuerst mit dem Kennwort für „Administrator" entsperren.');const t=kurseCache[e]||{};confirm(`Kurs „${t.n||""}" inklusive aller Einträge unwiderruflich löschen?`)&&(currentKursId===e&&db.ref(kbE(e)).off(),Promise.all([db.ref(kbM()+"/"+e).remove(),db.ref(kbE(e)).remove()]).then(()=>{currentKursId===e&&(currentKursId=null,showView("liste"))}).catch(e=>alert("Konnte Kurs nicht löschen:\n"+e.message)))}function openKurs(e){currentKursId=e,entriesCache={},renderMetaBox(),$("kurs-meta-edit").hidden=!0,showView("kurs"),db.ref(kbE(e)).off(),db.ref(kbE(e)).on("value",t=>{entriesCache=t.val()||{};const n=Object.keys(entriesCache).length;(kurseCache[e]?.c??-1)!==n&&db.ref(kbM()+"/"+e).update({c:n}).catch(()=>{}),elementeInContainerFokussiert()?renderPending=!0:renderEintraege()},e=>{$("eintraege").innerHTML='<p class="leer">Fehler beim Laden der Einträge: '+escHtml(e.message)+"</p>"})}function renderMetaBox(){const e=kurseCache[currentKursId]||{},t=[fmtDatum(e.v),fmtDatum(e.b)].filter(Boolean).join(" – ");$("kurs-meta-box").style.borderColor=hashColor(currentKursId),$("kurs-meta-box").style.borderWidth="3px",$("kurs-meta-box").innerHTML=`\n    <div class="name">${escHtml(e.n||"")}</div>\n    <div class="zeile"><b>Teilnehmende:</b> ${escHtml((e.t||"").split("\n").filter(Boolean).join(", "))||"–"}</div>\n    <div class="zeile"><b>Raum:</b> ${escHtml(e.r)||"–"}</div>\n    <div class="zeile"><b>Zeitraum:</b> ${t||"–"}</div>\n  `}function elementeInContainerFokussiert(){const e=$("eintraege");return document.activeElement&&e.contains(document.activeElement)}function renderEintraege(){const e=$("eintraege"),t=Object.keys(entriesCache).sort().reverse();0!==t.length?(e.innerHTML=t.map(e=>{const t=entriesCache[e]||{};return`<div class="eintrag" data-eid="${e}">\n      <button class="btn-del" title="Eintrag löschen">✕</button>\n      <label>Weitermachen mit …</label>\n      <div class="feldbox" data-field="h">\n        <div class="feld-anzeige" data-placeholder="Weitermachen mit …">${t.h?linkify(escHtml(t.h)):""}</div>\n        <textarea class="feld-edit" hidden placeholder="Weitermachen mit …">${escHtml(t.h)}</textarea>\n      </div>\n      <div class="kopf">\n        <div><label>Datum</label><input type="date" data-field="d" value="${escHtml(t.d)}"></div>\n        <div><label>Kursleitende/r</label><input type="text" data-field="k" value="${escHtml(t.k)}" placeholder="Name"></div>\n      </div>\n      <label>Inhalt / Hausaufgabe</label>\n      <div class="feldbox" data-field="i">\n        <div class="feld-anzeige" data-placeholder="Inhalt / Hausaufgabe…">${t.i?linkify(escHtml(t.i)):""}</div>\n        <textarea class="feld-edit" hidden placeholder="Inhalt / Hausaufgabe…">${escHtml(t.i)}</textarea>\n      </div>\n    </div>`}).join(""),e.querySelectorAll(".eintrag").forEach(e=>{const t=e.dataset.eid;e.querySelectorAll("input[data-field]").forEach(e=>{e.addEventListener("input",()=>saveField(`${t}_${e.dataset.field}`,t,e.dataset.field,e.value))}),e.querySelectorAll(".feldbox").forEach(e=>{const n=e.dataset.field,r=e.querySelector(".feld-anzeige"),i=e.querySelector(".feld-edit");r.addEventListener("click",e=>{e.target.closest("a")||(i.value=entriesCache[t]?.[n]??i.value,r.hidden=!0,i.hidden=!1,autoGrow(i),i.focus(),i.setSelectionRange(i.value.length,i.value.length))}),i.addEventListener("input",()=>{autoGrow(i),saveField(`${t}_${n}`,t,n,i.value)}),i.addEventListener("blur",()=>{const e=i.value;r.innerHTML=""===e.trim()?"":linkify(escHtml(e)),i.hidden=!0,r.hidden=!1})}),e.querySelector(".btn-del").addEventListener("click",()=>{confirm("Diesen Eintrag wirklich löschen?")&&(e.remove(),delete entriesCache[t],db.ref(`${kbE(currentKursId)}/${t}`).remove().catch(e=>{alert("Konnte Eintrag nicht löschen:\n"+e.message),renderEintraege()}))})})):e.innerHTML='<p class="leer">Noch keine Einträge. Mit „+ Neuer Eintrag" beginnen.</p>'}$("btn-neu-oeffnen").addEventListener("click",()=>{$("f-name").value="",$("f-teilnehmer").value="",$("f-raum").value="",$("f-von").value="",$("f-bis").value="",showView("neu")}),$("btn-neu-abbrechen").addEventListener("click",()=>showView("liste")),$("btn-neu-speichern").addEventListener("click",()=>{const e=$("f-name").value.trim();if(!e)return void alert("Bitte einen Kursnamen eingeben.");const t={n:e,t:$("f-teilnehmer").value.trim(),r:$("f-raum").value.trim(),v:$("f-von").value,b:$("f-bis").value,c:0},n=db.ref(kbM()).push();n.set(t).then(()=>openKurs(n.key)).catch(e=>alert("Konnte Kurs nicht speichern:\n"+e.message+'\n\nMögliche Ursache: Die Firebase-Security-Rules erlauben Schreiben unter "kb" (noch) nicht.'))}),$("btn-zurueck").addEventListener("click",()=>{currentKursId&&db.ref(kbE(currentKursId)).off(),currentKursId=null,showView("liste")}),$("btn-meta-bearbeiten").addEventListener("click",()=>{const e=kurseCache[currentKursId]||{};$("e-name").value=e.n||"",$("e-teilnehmer").value=e.t||"",$("e-raum").value=e.r||"",$("e-von").value=e.v||"",$("e-bis").value=e.b||"",$("kurs-meta-edit").hidden=!1}),$("btn-meta-abbrechen").addEventListener("click",()=>{$("kurs-meta-edit").hidden=!0}),$("btn-meta-speichern").addEventListener("click",()=>{const e=$("e-name").value.trim();e?db.ref(kbM()+"/"+currentKursId).update({n:e,t:$("e-teilnehmer").value.trim(),r:$("e-raum").value.trim(),v:$("e-von").value,b:$("e-bis").value}).then(()=>{$("kurs-meta-edit").hidden=!0}).catch(e=>alert("Konnte Kursdaten nicht speichern:\n"+e.message)):alert("Bitte einen Kursnamen eingeben.")}),$("btn-kurs-loeschen").addEventListener("click",()=>{currentKursId&&kursLoeschen(currentKursId)}),$("eintraege").addEventListener("focusout",()=>{setTimeout(()=>{renderPending&&!elementeInContainerFokussiert()&&(renderPending=!1,renderEintraege())},0)}),$("btn-neuer-eintrag").addEventListener("click",()=>{const e=(new Date).toISOString().slice(0,10);db.ref(kbE(currentKursId)).push().set({d:e,k:"",i:"",h:""}).catch(e=>alert("Konnte Eintrag nicht anlegen:\n"+e.message))});const saveField=debounce((e,t,n)=>{db.ref(`${kbE(currentKursId)}/${e}`).update({[t]:n}).catch(e=>console.error("Speichern fehlgeschlagen:",e.message))},600),PW_HASH="ed61b00199cdeec7d82bb63a7f30f7743682d655dd1cb672dd9aedc5527c8bf8",PW_STORAGE_KEY="kb_auth_ok",PW_MERKEN_KEY="kb_pw_merken";async function sha256Hex(e){const t=await crypto.subtle.digest("SHA-256",(new TextEncoder).encode(e));return Array.from(new Uint8Array(t)).map(e=>e.toString(16).padStart(2,"0")).join("")}function zeigeApp(){$("login-overlay").hidden=!0,$("app-content").hidden=!1,$("titel").innerHTML=`Kursliste<br>${STANDORT_ANZEIGE[standort]}`,starteKursListe()}async function versucheAnmeldung(e){const t=$("login-pw").value;await sha256Hex(t.toLowerCase())===PW_HASH?(localStorage.setItem("kb_auth_ok",PW_HASH),localStorage.setItem(PW_MERKEN_KEY,t),$("login-fehler").hidden=!0,standort=e,zeigeApp()):($("login-fehler").hidden=!1,$("login-pw").value="",$("login-pw").focus())}async function pdfKurseExportieren(e,t){if(0===e.length)return void alert("Bitte zuerst mindestens einen Kurs in der Liste markieren.");const n=t.textContent;t.disabled=!0,t.textContent="Erstelle PDF …";try{const{jsPDF:t}=window.jspdf,n=new t({unit:"pt",format:"a4"}),r=n.internal.pageSize.getWidth();for(let t=0;t<e.length;t++){const i=e[t],a=kurseCache[i]||{},s=(await db.ref(kbE(i)).once("value")).val()||{},l=Object.keys(s).sort();t>0&&n.addPage(),n.setFont(void 0,"bold"),n.setFontSize(16),n.text(a.n||"(ohne Namen)",40,46),n.setFont(void 0,"normal"),n.setFontSize(10);const d=(a.t||"").split("\n").map(e=>e.trim()).filter(Boolean).join(", ")||"–",c=[fmtDatum(a.v),fmtDatum(a.b)].filter(Boolean).join(" – ")||"–",o=n.splitTextToSize(`Teilnehmende: ${d}`,r-80);let u=66;n.text(o,40,u),u+=12*o.length+4,n.text(`Raum: ${a.r||"–"}`,40,u),u+=14,n.text(`Zeitraum: ${c}`,40,u),u+=10;const h=l.map(e=>{const t=s[e];return[fmtDatum(t.d)||"–",t.k||"–",t.i||"–",t.h||"–"]});n.autoTable({startY:u+10,head:[["Datum","Kursleitende/r","Inhalt / Hausaufgabe","Weiter machen mit …"]],body:h.length?h:[["–","–","Keine Einträge vorhanden","–"]],theme:"grid",styles:{fontSize:9,cellPadding:5,textColor:[0,0,0],lineColor:[0,0,0],lineWidth:.5,overflow:"linebreak",valign:"top"},headStyles:{fillColor:[255,255,255],textColor:[0,0,0],fontStyle:"bold",lineWidth:.5},margin:{left:40,right:40},willDrawCell:e=>{"body"!==e.section||2!==e.column.index&&3!==e.column.index||(e.cell.text=[])},didDrawCell:e=>{if("body"!==e.section||2!==e.column.index&&3!==e.column.index)return;const t=String(e.cell.raw??""),r=e.cell.padding("left"),i=e.cell.padding("top"),a=e.cell.width-r-e.cell.padding("right");n.setFontSize(9);let s=e.cell.y+i+7;t.split("\n").forEach(t=>{n.splitTextToSize(""===t?" ":t,a).forEach(t=>{let i=e.cell.x+r;segmentiereLinks(t).forEach(e=>{e.text&&(e.link?(n.setTextColor(6,69,173),n.textWithLink(e.text,i,s,{url:e.href})):(n.setTextColor(0,0,0),n.text(e.text,i,s)),i+=n.getTextWidth(e.text))}),s+=11})}),n.setTextColor(0,0,0)}})}const i=1===e.length?`${(kurseCache[e[0]]?.n||"Kurs").replace(/[^\w\-äöüÄÖÜß ]/g,"").trim()||"Kurs"}_${(new Date).toISOString().slice(0,10)}.pdf`:`Kursbuecher_${(new Date).toISOString().slice(0,10)}.pdf`;n.save(i)}catch(e){alert("PDF konnte nicht erstellt werden:\n"+e.message)}finally{t.disabled=!1,t.textContent=n}}localStorage.getItem(PW_MERKEN_KEY)&&($("login-pw").value=localStorage.getItem(PW_MERKEN_KEY)),$("login-form").addEventListener("submit",e=>e.preventDefault()),$("btn-pw-anzeigen").addEventListener("click",()=>{const e=$("login-pw"),t="password"===e.type;e.type=t?"text":"password",$("btn-pw-anzeigen").textContent=t?"🙈":"👁",$("btn-pw-anzeigen").title=t?"Kennwort verbergen":"Kennwort anzeigen",$("btn-pw-anzeigen").setAttribute("aria-label",t?"Kennwort verbergen":"Kennwort anzeigen")}),$("btn-standort-kasumigaseki").addEventListener("click",()=>versucheAnmeldung("kasumigaseki")),$("btn-standort-sagami-ono").addEventListener("click",()=>versucheAnmeldung("sagami-ono")),$("btn-daten-speichern").addEventListener("click",()=>{pdfKurseExportieren(Array.from(document.querySelectorAll(".kurs-checkbox:checked")).map(e=>e.dataset.id),$("btn-daten-speichern"))}),$("btn-kursdaten-speichern").addEventListener("click",()=>{currentKursId&&pdfKurseExportieren([currentKursId],$("btn-kursdaten-speichern"))});const ADMIN_PW_HASH="97ddf88271318054cfa3395e17a2f38f4df63990b437bb6bb6c72d0afa26039c",ADMIN_STORAGE_KEY="kb_admin_ok";let adminUnlocked=sessionStorage.getItem("kb_admin_ok")===ADMIN_PW_HASH;function adminAnzeigeAktualisieren(){document.body.classList.toggle("admin-unlocked",adminUnlocked),$("btn-admin-toggle").textContent=adminUnlocked?"Administrator (entsperrt)":"Administrator"}adminAnzeigeAktualisieren(),$("btn-admin-toggle").addEventListener("click",async()=>{if(adminUnlocked)return adminUnlocked=!1,sessionStorage.removeItem("kb_admin_ok"),void adminAnzeigeAktualisieren();const e=prompt("Kennwort für die Kurs-Löschfunktion:");null!==e&&(await sha256Hex(e.toLowerCase())===ADMIN_PW_HASH?(adminUnlocked=!0,sessionStorage.setItem("kb_admin_ok",ADMIN_PW_HASH),adminAnzeigeAktualisieren()):alert("Falsches Kennwort."))});</script>
+
+const firebaseConfig = {
+  apiKey:'AIzaSyAMi5PCfJ-Fwg20-urkTvpvVkWi7LI0JQo',
+  databaseURL:'https://interaktive-tafel-default-rtdb.europe-west1.firebasedatabase.app',
+  projectId:'interaktive-tafel',
+  appId:'1:761401562204:web:02796fca95e0496c1cc299'
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let kurseCache = {};
+let currentKursId = null;
+let entriesCache = {};
+let renderPending = false;
+let standort = null; // 'kasumigaseki' | 'sagami-ono' – trennt die beiden Kursübersichten in Firebase komplett
+
+const STANDORT_ANZEIGE = { kasumigaseki: 'Kasumigaseki', 'sagami-ono': 'Sagami\u2011Ōno' };
+function kbM(){ return `kb/${standort}/m`; }
+function kbE(kursId){ return `kb/${standort}/e/${kursId}`; }
+
+const $ = id => document.getElementById(id);
+
+function showView(name){
+  $('view-liste').hidden  = name !== 'liste';
+  $('view-neu').hidden    = name !== 'neu';
+  $('view-kurs').hidden   = name !== 'kurs';
+  document.body.classList.toggle('ansicht-liste', name === 'liste');
+  $('titel').hidden = (name === 'kurs');
+  $('btn-neu-oeffnen').hidden = (name === 'kurs');
+}
+
+function escHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtDatum(iso){
+  if(!iso) return '';
+  const [y,m,t] = iso.split('-');
+  return (t && m && y) ? `${t}.${m}.${y}` : iso;
+}
+function autoGrow(el){
+  el.style.height = 'auto';
+  el.style.height = (el.scrollHeight + 2) + 'px';
+}
+function linkify(escapedText){
+  return escapedText.replace(/(\bhttps?:\/\/[^\s<]+|\bwww\.[^\s<]+\b)/gi, url => {
+    const href = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+  });
+}
+const KURS_FARBEN = ['#e64980','#1c7ed6','#2f9e44','#f08c00','#7048e8','#0ca678','#e8590c','#1098ad','#c2255c','#5c940d'];
+function hashColor(str){
+  let h = 0;
+  for(let i = 0; i < str.length; i++){ h = (h * 31 + str.charCodeAt(i)) >>> 0; }
+  return KURS_FARBEN[h % KURS_FARBEN.length];
+}
+function hexZuHell(hex, anteil = 0.85){
+  const r = parseInt(hex.slice(1,3), 16), g = parseInt(hex.slice(3,5), 16), b = parseInt(hex.slice(5,7), 16);
+  const mix = c => Math.round(c + (255 - c) * anteil);
+  return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+}
+function segmentiereLinks(text){
+  const regex = /(\bhttps?:\/\/\S+|\bwww\.\S+\b)/gi;
+  const teile = [];
+  let last = 0, m;
+  while((m = regex.exec(text))){
+    if(m.index > last) teile.push({ text: text.slice(last, m.index), link:false });
+    const url = m[0];
+    const href = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+    teile.push({ text: url, link:true, href });
+    last = m.index + url.length;
+  }
+  if(last < text.length) teile.push({ text: text.slice(last), link:false });
+  return teile.length ? teile : [{ text:'', link:false }];
+}
+function debounce(fn, ms){
+  const timers = new Map();
+  return (key, ...args) => {
+    clearTimeout(timers.get(key));
+    timers.set(key, setTimeout(() => fn(...args), ms));
+  };
+}
+
+/* ---------- Kurs-Liste ---------- */
+
+function starteKursListe(){
+  db.ref(kbM()).on('value', snap => {
+    kurseCache = snap.val() || {};
+    renderKursListe();
+  }, err => {
+    $('liste-items').innerHTML = '<p class="leer">Fehler beim Laden: ' + escHtml(err.message) +
+      '<br>Vermutlich erlauben die Firebase-Security-Rules den Lesezugriff auf "kb" (noch) nicht.</p>';
+  });
+}
+
+function renderKursListe(){
+  const box = $('liste-items');
+  const ids = Object.keys(kurseCache).sort().reverse(); // push-Keys => neueste zuerst
+  if(ids.length === 0){
+    box.innerHTML = '<p class="leer">Noch keine Kurse angelegt. Mit „+ Neuer Kurs" beginnen.</p>';
+    return;
+  }
+  box.innerHTML = ids.map(id => {
+    const k = kurseCache[id];
+    const namen = (k.t || '').split('\n').map(s=>s.trim()).filter(Boolean);
+    const namenText = namen.length ? escHtml(namen.join(', ')) : 'keine Teilnehmende eingetragen';
+    const zeitraum = [fmtDatum(k.v), fmtDatum(k.b)].filter(Boolean).join(' – ');
+    const anzahl = k.c ?? 0;
+    const anzahlText = `${anzahl} ${anzahl === 1 ? 'Eintrag' : 'Einträge'}`;
+    const farbe = hashColor(id);
+    return `<div class="kurs-item" data-id="${id}" style="border-color:${farbe}; border-width:3px; --kurs-hell:${hexZuHell(farbe)};">
+      <div class="kurs-klick">
+        <div class="name">${escHtml(k.n || '(ohne Namen)')}</div>
+        <div class="sub">${namenText}${k.r ? ' · Raum ' + escHtml(k.r) : ''}${zeitraum ? ' · ' + escHtml(zeitraum) : ''} · ${anzahlText}</div>
+      </div>
+      <button class="btn-kurs-loeschen-liste admin-only" title="Kurs löschen">✕ Löschen</button>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.kurs-klick').forEach(el => {
+    el.addEventListener('click', () => openKurs(el.closest('.kurs-item').dataset.id));
+  });
+  box.querySelectorAll('.btn-kurs-loeschen-liste').forEach(el => {
+    el.addEventListener('click', ev => {
+      ev.stopPropagation();
+      const id = el.closest('.kurs-item').dataset.id;
+      kursLoeschen(id);
+    });
+  });
+}
+
+function kursLoeschen(id){
+  if(!adminUnlocked){ alert('Die Löschfunktion ist gesperrt. Bitte zuerst mit dem Kennwort für „Administration" entsperren.'); return; }
+  const k = kurseCache[id] || {};
+  if(!confirm(`Kurs „${k.n || ''}" inklusive aller Einträge unwiderruflich löschen?`)) return;
+  if(currentKursId === id) db.ref(kbE(id)).off();
+  Promise.all([db.ref(kbM() + '/' + id).remove(), db.ref(kbE(id)).remove()])
+    .then(() => { if(currentKursId === id){ currentKursId = null; showView('liste'); } })
+    .catch(err => alert('Konnte Kurs nicht löschen:\n' + err.message));
+}
+
+/* ---------- Neuer Kurs ---------- */
+
+$('btn-neu-oeffnen').addEventListener('click', () => {
+  $('f-name').value = ''; $('f-teilnehmer').value = '';
+  $('f-raum').value = ''; $('f-von').value = ''; $('f-bis').value = '';
+  showView('neu');
+});
+$('btn-neu-abbrechen').addEventListener('click', () => showView('liste'));
+
+$('btn-neu-speichern').addEventListener('click', () => {
+  const n = $('f-name').value.trim();
+  if(!n){ alert('Bitte einen Kursnamen eingeben.'); return; }
+  const meta = {
+    n,
+    t: $('f-teilnehmer').value.trim(),
+    r: $('f-raum').value.trim(),
+    v: $('f-von').value,
+    b: $('f-bis').value,
+    c: 0
+  };
+  const ref = db.ref(kbM()).push();
+  ref.set(meta)
+    .then(() => openKurs(ref.key))
+    .catch(err => alert('Konnte Kurs nicht speichern:\n' + err.message +
+      '\n\nMögliche Ursache: Die Firebase-Security-Rules erlauben Schreiben unter "kb" (noch) nicht.'));
+});
+
+/* ---------- Kurs-Detail ---------- */
+
+function openKurs(id){
+  currentKursId = id;
+  entriesCache = {};
+  renderMetaBox();
+  $('kurs-meta-edit').hidden = true;
+  showView('kurs');
+  db.ref(kbE(id)).off();
+  db.ref(kbE(id)).on('value', snap => {
+    entriesCache = snap.val() || {};
+    const anzahl = Object.keys(entriesCache).length;
+    if((kurseCache[id]?.c ?? -1) !== anzahl){
+      db.ref(kbM() + '/' + id).update({ c: anzahl }).catch(() => {});
+    }
+    if(elementeInContainerFokussiert()){ renderPending = true; return; }
+    renderEintraege();
+  }, err => {
+    $('eintraege').innerHTML = '<p class="leer">Fehler beim Laden der Einträge: ' + escHtml(err.message) + '</p>';
+  });
+}
+
+$('btn-zurueck').addEventListener('click', () => {
+  if(currentKursId) db.ref(kbE(currentKursId)).off();
+  currentKursId = null;
+  showView('liste');
+});
+
+function renderMetaBox(){
+  const k = kurseCache[currentKursId] || {};
+  const zeitraum = [fmtDatum(k.v), fmtDatum(k.b)].filter(Boolean).join(' – ');
+  $('kurs-meta-box').style.borderColor = hashColor(currentKursId);
+  $('kurs-meta-box').style.borderWidth = '3px';
+  $('kurs-meta-box').innerHTML = `
+    <div class="name">${escHtml(k.n || '')}</div>
+    <div class="zeile"><b>Teilnehmende:</b> ${escHtml((k.t||'').split('\n').filter(Boolean).join(', ')) || '–'}</div>
+    <div class="zeile"><b>Raum:</b> ${escHtml(k.r) || '–'}</div>
+    <div class="zeile"><b>Zeitraum:</b> ${zeitraum || '–'}</div>
+  `;
+}
+
+$('btn-meta-bearbeiten').addEventListener('click', () => {
+  const k = kurseCache[currentKursId] || {};
+  $('e-name').value = k.n || '';
+  $('e-teilnehmer').value = k.t || '';
+  $('e-raum').value = k.r || '';
+  $('e-von').value = k.v || '';
+  $('e-bis').value = k.b || '';
+  $('kurs-meta-edit').hidden = false;
+});
+$('btn-meta-abbrechen').addEventListener('click', () => { $('kurs-meta-edit').hidden = true; });
+
+$('btn-meta-speichern').addEventListener('click', () => {
+  const n = $('e-name').value.trim();
+  if(!n){ alert('Bitte einen Kursnamen eingeben.'); return; }
+  db.ref(kbM() + '/' + currentKursId).update({
+    n, t: $('e-teilnehmer').value.trim(), r: $('e-raum').value.trim(),
+    v: $('e-von').value, b: $('e-bis').value
+  }).then(() => { $('kurs-meta-edit').hidden = true; })
+    .catch(err => alert('Konnte Kursdaten nicht speichern:\n' + err.message));
+});
+
+$('btn-kurs-loeschen').addEventListener('click', () => {
+  if(currentKursId) kursLoeschen(currentKursId);
+});
+
+/* ---------- Einträge ---------- */
+
+function elementeInContainerFokussiert(){
+  const c = $('eintraege');
+  return document.activeElement && c.contains(document.activeElement);
+}
+$('eintraege').addEventListener('focusout', () => {
+  setTimeout(() => {
+    if(renderPending && !elementeInContainerFokussiert()){
+      renderPending = false;
+      renderEintraege();
+    }
+  }, 0);
+});
+
+$('btn-neuer-eintrag').addEventListener('click', () => {
+  const heute = new Date().toISOString().slice(0,10);
+  const ref = db.ref(kbE(currentKursId)).push();
+  ref.set({ d: heute, k: '', i: '', h: '' })
+    .catch(err => alert('Konnte Eintrag nicht anlegen:\n' + err.message));
+});
+
+function renderEintraege(){
+  const box = $('eintraege');
+  const ids = Object.keys(entriesCache).sort().reverse(); // neueste zuerst
+  if(ids.length === 0){
+    box.innerHTML = '<p class="leer">Noch keine Einträge. Mit „+ Neuer Eintrag" beginnen.</p>';
+    return;
+  }
+  box.innerHTML = ids.map((eid, idx) => {
+    const e = entriesCache[eid] || {};
+    return `<div class="eintrag" data-eid="${eid}">
+      <button class="btn-del${idx === 0 ? '' : ' admin-only'}" title="Eintrag löschen">✕</button>
+      <label>Weitermachen mit …</label>
+      <div class="feldbox" data-field="h">
+        <div class="feld-anzeige" data-placeholder="Weitermachen mit …">${e.h ? linkify(escHtml(e.h)) : ''}</div>
+        <textarea class="feld-edit" hidden placeholder="Weitermachen mit …">${escHtml(e.h)}</textarea>
+      </div>
+      <label>Anmerkung!</label>
+      <div class="feldbox" data-field="a">
+        <div class="feld-anzeige" data-placeholder="z.B. Seite 34 ausgelassen, weil …">${e.a ? linkify(escHtml(e.a)) : ''}</div>
+        <textarea class="feld-edit" hidden placeholder="z.B. Seite 34 ausgelassen, weil …">${escHtml(e.a)}</textarea>
+      </div>
+      <div class="kopf">
+        <div><label>Datum</label><input type="date" data-field="d" value="${escHtml(e.d)}"></div>
+        <div><label>Kursleitende/r</label><input type="text" data-field="k" value="${escHtml(e.k)}" placeholder="Name"></div>
+      </div>
+      <label>Inhalt / Hausaufgabe</label>
+      <div class="feldbox" data-field="i">
+        <div class="feld-anzeige" data-placeholder="Inhalt / Hausaufgabe…">${e.i ? linkify(escHtml(e.i)) : ''}</div>
+        <textarea class="feld-edit" hidden placeholder="Inhalt / Hausaufgabe…">${escHtml(e.i)}</textarea>
+      </div>
+    </div>`;
+  }).join('');
+
+  box.querySelectorAll('.eintrag').forEach(card => {
+    const eid = card.dataset.eid;
+    card.querySelectorAll('input[data-field]').forEach(el => {
+      el.addEventListener('input', () => saveField(`${eid}_${el.dataset.field}`, eid, el.dataset.field, el.value));
+    });
+    card.querySelectorAll('.feldbox').forEach(wrap => {
+      const field = wrap.dataset.field;
+      const anzeige = wrap.querySelector('.feld-anzeige');
+      const edit = wrap.querySelector('.feld-edit');
+
+      anzeige.addEventListener('click', ev => {
+        if(ev.target.closest('a')) return; // Link ganz normal öffnen lassen, nicht in Bearbeiten wechseln
+        edit.value = entriesCache[eid]?.[field] ?? edit.value;
+        anzeige.hidden = true;
+        edit.hidden = false;
+        autoGrow(edit);
+        edit.focus();
+        edit.setSelectionRange(edit.value.length, edit.value.length);
+      });
+      edit.addEventListener('input', () => {
+        autoGrow(edit);
+        saveField(`${eid}_${field}`, eid, field, edit.value);
+      });
+      edit.addEventListener('blur', () => {
+        const val = edit.value;
+        anzeige.innerHTML = val.trim() === '' ? '' : linkify(escHtml(val));
+        edit.hidden = true;
+        anzeige.hidden = false;
+      });
+    });
+    card.querySelector('.btn-del').addEventListener('click', () => {
+      const knopf = card.querySelector('.btn-del');
+      if(knopf.classList.contains('admin-only') && !adminUnlocked){
+        alert('Nur der aktuellste Eintrag lässt sich ohne Administration löschen.');
+        return;
+      }
+      if(confirm('Diesen Eintrag wirklich löschen?')){
+        card.remove();
+        delete entriesCache[eid];
+        db.ref(`${kbE(currentKursId)}/${eid}`).remove()
+          .catch(err => { alert('Konnte Eintrag nicht löschen:\n' + err.message); renderEintraege(); });
+      }
+    });
+  });
+}
+
+const saveField = debounce((eid, field, value) => {
+  db.ref(`${kbE(currentKursId)}/${eid}`).update({ [field]: value })
+    .catch(err => console.error('Speichern fehlgeschlagen:', err.message));
+}, 600);
+
+/* ---------- Passwortschutz (rein clientseitig, wie im übrigen System) ---------- */
+
+const PW_HASH = 'ed61b00199cdeec7d82bb63a7f30f7743682d655dd1cb672dd9aedc5527c8bf8';
+const PW_STORAGE_KEY = 'kb_auth_ok';
+const PW_MERKEN_KEY = 'kb_pw_merken';
+if(localStorage.getItem(PW_MERKEN_KEY)){
+  $('login-pw').value = localStorage.getItem(PW_MERKEN_KEY);
+}
+
+async function sha256Hex(text){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function zeigeApp(){
+  $('login-overlay').hidden = true;
+  $('app-content').hidden = false;
+  $('titel').innerHTML = `Kursliste<br>${STANDORT_ANZEIGE[standort]}`;
+  starteKursListe();
+}
+
+async function versucheAnmeldung(gewaehlterStandort){
+  const eingabe = $('login-pw').value;
+  const hash = await sha256Hex(eingabe.toLowerCase());
+  if(hash === PW_HASH){
+    localStorage.setItem(PW_STORAGE_KEY, PW_HASH);
+    localStorage.setItem(PW_MERKEN_KEY, eingabe);
+    $('login-fehler').hidden = true;
+    standort = gewaehlterStandort;
+    zeigeApp();
+  } else {
+    $('login-fehler').hidden = false;
+    $('login-pw').value = '';
+    $('login-pw').focus();
+  }
+}
+$('login-form').addEventListener('submit', ev => ev.preventDefault());
+$('btn-pw-anzeigen').addEventListener('click', () => {
+  const feld = $('login-pw');
+  const wirdSichtbar = feld.type === 'password';
+  feld.type = wirdSichtbar ? 'text' : 'password';
+  $('btn-pw-anzeigen').textContent = wirdSichtbar ? '🙈' : '👁';
+  $('btn-pw-anzeigen').title = wirdSichtbar ? 'Kennwort verbergen' : 'Kennwort anzeigen';
+  $('btn-pw-anzeigen').setAttribute('aria-label', wirdSichtbar ? 'Kennwort verbergen' : 'Kennwort anzeigen');
+});
+$('btn-standort-kasumigaseki').addEventListener('click', () => versucheAnmeldung('kasumigaseki'));
+$('btn-standort-sagami-ono').addEventListener('click', () => versucheAnmeldung('sagami-ono'));
+
+/* ---------- Daten speichern: Kurse als PDF ---------- */
+
+async function pdfKurseExportieren(ids, btn){
+  if(ids.length === 0){ alert('Bitte zuerst mindestens einen Kurs in der Liste markieren.'); return; }
+
+  const altText = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Erstelle PDF …';
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:'pt', format:'a4' });
+    const seitenbreite = doc.internal.pageSize.getWidth();
+
+    for(let i = 0; i < ids.length; i++){
+      const id = ids[i];
+      const k = kurseCache[id] || {};
+      const snap = await db.ref(kbE(id)).once('value');
+      const eintraegeObj = snap.val() || {};
+      const eintraegeIds = Object.keys(eintraegeObj).sort(); // chronologisch aufsteigend fürs PDF
+
+      if(i > 0) doc.addPage();
+
+      doc.setFont(undefined, 'bold'); doc.setFontSize(16);
+      doc.text(k.n || '(ohne Namen)', 40, 46);
+
+      doc.setFont(undefined, 'normal'); doc.setFontSize(10);
+      const namen = (k.t || '').split('\n').map(s=>s.trim()).filter(Boolean).join(', ') || '–';
+      const zeitraum = [fmtDatum(k.v), fmtDatum(k.b)].filter(Boolean).join(' – ') || '–';
+      const metaZeilen = doc.splitTextToSize(`Teilnehmende: ${namen}`, seitenbreite - 80);
+      let y = 66;
+      doc.text(metaZeilen, 40, y); y += metaZeilen.length * 12 + 4;
+      doc.text(`Raum: ${k.r || '–'}`, 40, y); y += 14;
+      doc.text(`Zeitraum: ${zeitraum}`, 40, y); y += 10;
+
+      const zeilen = eintraegeIds.map(eid => {
+        const e = eintraegeObj[eid];
+        return [fmtDatum(e.d) || '–', e.k || '–', e.i || '–', e.h || '–', e.a || ''];
+      });
+
+      doc.autoTable({
+        startY: y + 10,
+        head: [['Datum', 'Kursleitende/r', 'Inhalt / Hausaufgabe', 'Weiter machen mit …', 'Anmerkung']],
+        body: zeilen.length ? zeilen : [['–', '–', 'Keine Einträge vorhanden', '–', '']],
+        theme: 'grid',
+        styles:{ fontSize:9, cellPadding:5, textColor:[0,0,0], lineColor:[0,0,0], lineWidth:0.5, overflow:'linebreak', valign:'top' },
+        headStyles:{ fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.5 },
+        margin:{ left:40, right:40 },
+        willDrawCell: data => {
+          // Text dieser Zellen selbst zeichnen (siehe didDrawCell), damit Links klickbar werden.
+          // Die Zeilenhöhe wurde vorher bereits anhand des Originaltexts korrekt berechnet.
+          if(data.section === 'body' && data.column.index >= 2 && data.column.index <= 4){
+            data.cell.text = [];
+          }
+        },
+        didDrawCell: data => {
+          if(data.section !== 'body' || data.column.index < 2 || data.column.index > 4) return;
+          const roh = String(data.cell.raw ?? '');
+          const padLinks = data.cell.padding('left');
+          const padOben = data.cell.padding('top');
+          const maxBreite = data.cell.width - padLinks - data.cell.padding('right');
+          doc.setFontSize(9);
+          let cy = data.cell.y + padOben + 7;
+          roh.split('\n').forEach(zeile => {
+            const gewrappt = doc.splitTextToSize(zeile === '' ? ' ' : zeile, maxBreite);
+            gewrappt.forEach(sub => {
+              let cx = data.cell.x + padLinks;
+              segmentiereLinks(sub).forEach(teil => {
+                if(!teil.text) return;
+                if(teil.link){
+                  doc.setTextColor(6, 69, 173);
+                  doc.textWithLink(teil.text, cx, cy, { url: teil.href });
+                } else {
+                  doc.setTextColor(0, 0, 0);
+                  doc.text(teil.text, cx, cy);
+                }
+                cx += doc.getTextWidth(teil.text);
+              });
+              cy += 11;
+            });
+          });
+          doc.setTextColor(0, 0, 0);
+        }
+      });
+    }
+
+    const dateiname = ids.length === 1
+      ? `${(kurseCache[ids[0]]?.n || 'Kurs').replace(/[^\w\-äöüÄÖÜß ]/g,'').trim() || 'Kurs'}_${new Date().toISOString().slice(0,10)}.pdf`
+      : `Kursbuecher_${new Date().toISOString().slice(0,10)}.pdf`;
+    doc.save(dateiname);
+  } catch(err){
+    alert('PDF konnte nicht erstellt werden:\n' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = altText;
+  }
+}
+
+/* ---------- Datensicherung / Wiederherstellung (ersetzt den kompletten Standort-Datenbestand) ---------- */
+
+let pendingWiederherstellung = null; // { m:{...}, e:{...} } aus eingelesener Datei, noch nicht gespeichert
+
+async function datensicherungErstellen(){
+  const btn = $('btn-datensicherung');
+  const altText = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sichere …';
+  try{
+    const snap = await db.ref(`kb/${standort}`).once('value');
+    const daten = snap.val() || { m:{}, e:{} };
+    const inhalt = JSON.stringify({ standort, erstellt: new Date().toISOString(), m: daten.m || {}, e: daten.e || {} }, null, 2);
+    const blob = new Blob([inhalt], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Datensicherung_${standort}_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch(err){
+    alert('Datensicherung fehlgeschlagen:\n' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = altText;
+  }
+}
+
+async function wiederherstellungUebernehmen(){
+  if(!confirm('Achtung: Damit werden ALLE aktuellen Kursdaten dieses Standorts endgültig gelöscht und durch die Daten aus der eingelesenen Datei ersetzt. Fortfahren?')) return;
+  const btn = $('btn-datensicherung');
+  const altText = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Ersetze Daten …';
+  try{
+    await db.ref(`kb/${standort}`).remove();
+    await db.ref(`kb/${standort}`).set({ m: pendingWiederherstellung.m || {}, e: pendingWiederherstellung.e || {} });
+    pendingWiederherstellung = null;
+    $('wiederherstellung-vorschau').hidden = true;
+    $('datei-wiederherstellung').value = '';
+    alert('Wiederherstellung abgeschlossen.');
+  } catch(err){
+    alert('Wiederherstellung fehlgeschlagen:\n' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = pendingWiederherstellung ? altText : 'Datensicherung';
+  }
+}
+
+$('btn-datensicherung').addEventListener('click', () => {
+  if(pendingWiederherstellung){
+    wiederherstellungUebernehmen();
+  } else {
+    datensicherungErstellen();
+  }
+});
+
+$('btn-wiederherstellung').addEventListener('click', () => {
+  $('datei-wiederherstellung').click();
+});
+
+$('datei-wiederherstellung').addEventListener('change', ev => {
+  const datei = ev.target.files[0];
+  if(!datei) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let daten;
+    try{ daten = JSON.parse(reader.result); }
+    catch(err){ alert('Diese Datei ist keine gültige Datensicherung (kein lesbares JSON).'); return; }
+    if(typeof daten !== 'object' || daten === null || (!daten.m && !daten.e)){
+      alert('Diese Datei sieht nicht wie eine Klassenbuch-Datensicherung aus.');
+      return;
+    }
+    pendingWiederherstellung = { m: daten.m || {}, e: daten.e || {} };
+    const kursIds = Object.keys(pendingWiederherstellung.m);
+    const gesamtEintraege = Object.values(pendingWiederherstellung.e).reduce((sum, ee) => sum + Object.keys(ee || {}).length, 0);
+    $('wiederherstellung-info').textContent =
+      `Datei enthält ${kursIds.length} Kurs(e) mit insgesamt ${gesamtEintraege} Eintrag/Einträgen. ` +
+      `Nichts wurde gespeichert – erst ein Klick auf „Datensicherung" ersetzt die aktuellen Daten.`;
+    $('wiederherstellung-liste').innerHTML = kursIds.length
+      ? '<ul>' + kursIds.map(id => `<li>${escHtml(pendingWiederherstellung.m[id]?.n || '(ohne Namen)')}</li>`).join('') + '</ul>'
+      : '<p class="leer">Keine Kurse in dieser Datei.</p>';
+    $('wiederherstellung-vorschau').hidden = false;
+    $('btn-datensicherung').textContent = 'Datensicherung (jetzt ersetzen)';
+  };
+  reader.readAsText(datei);
+});
+
+$('btn-wiederherstellung-abbrechen').addEventListener('click', () => {
+  pendingWiederherstellung = null;
+  $('wiederherstellung-vorschau').hidden = true;
+  $('datei-wiederherstellung').value = '';
+  $('btn-datensicherung').textContent = 'Datensicherung';
+});
+
+$('btn-kursdaten-speichern').addEventListener('click', () => {
+  if(!currentKursId) return;
+  pdfKurseExportieren([currentKursId], $('btn-kursdaten-speichern'));
+});
+
+/* ---------- Zweites Passwort: schaltet nur die Kurs-Löschfunktion frei ---------- */
+
+const ADMIN_PW_HASH = '97ddf88271318054cfa3395e17a2f38f4df63990b437bb6bb6c72d0afa26039c';
+const ADMIN_STORAGE_KEY = 'kb_admin_ok';
+let adminUnlocked = sessionStorage.getItem(ADMIN_STORAGE_KEY) === ADMIN_PW_HASH;
+
+function adminAnzeigeAktualisieren(){
+  document.body.classList.toggle('admin-unlocked', adminUnlocked);
+  $('btn-admin-toggle').textContent = adminUnlocked ? 'Administration (entsperrt)' : 'Administration';
+}
+adminAnzeigeAktualisieren();
+
+$('btn-admin-toggle').addEventListener('click', async () => {
+  if(adminUnlocked){
+    adminUnlocked = false;
+    sessionStorage.removeItem(ADMIN_STORAGE_KEY);
+    adminAnzeigeAktualisieren();
+    return;
+  }
+  const eingabe = prompt('Kennwort für die Kurs-Löschfunktion:');
+  if(eingabe === null) return;
+  const hash = await sha256Hex(eingabe.toLowerCase());
+  if(hash === ADMIN_PW_HASH){
+    adminUnlocked = true;
+    sessionStorage.setItem(ADMIN_STORAGE_KEY, ADMIN_PW_HASH);
+    adminAnzeigeAktualisieren();
+  } else {
+    alert('Falsches Kennwort.');
+  }
+});
+</script>
 </body>
 </html>
