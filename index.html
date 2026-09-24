@@ -18,7 +18,8 @@
     font-size:var(--fs1);
     line-height:1.45;
   }
-  body{ padding: var(--pad); max-width:760px; margin:0 auto; }
+  body{ padding: var(--pad); max-width:1100px; margin:0 auto; }
+  header, #view-liste, #view-neu{ max-width:760px; margin-left:auto; margin-right:auto; }
   h1,h2{
     font-size:var(--fs2); font-weight:700; margin:0 0 12px 0; color:#777;
   }
@@ -43,7 +44,7 @@
   }
   button:disabled{ opacity:.4; cursor:default; box-shadow:none; transform:none; }
   button:disabled:hover{ background:linear-gradient(180deg, #ffffff, #ececec); color:#000; }
-  input, textarea{
+  input, textarea, select{
     font-family:inherit; font-size:var(--fs1); color:#000; background:#fff;
     border:1px solid #000; border-radius:8px; padding:8px; width:100%;
   }
@@ -145,6 +146,23 @@
       box-shadow:0 1px 0 rgba(0,0,0,.15), 0 3px 6px rgba(0,0,0,.12),
         inset 0 1px 0 rgba(255,255,255,.9), inset 0 -2px 3px rgba(0,0,0,.06);
     }
+  }
+
+  /* Kapitel-Anzeige (oben neben "+ Neuer Eintrag") */
+  #kapitel-anzeige{
+    display:flex; align-items:center; font-size:var(--fs1); color:#000;
+    font-weight:700; text-align:left;
+  }
+  #kapitel-anzeige b{ color:#000; }
+
+  /* Übungen C-Teil (Feld innerhalb jedes Eintrags) */
+  .cteil-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px; }
+  .cteil-tag{ font-weight:700; color:#777; white-space:nowrap; }
+  .cteil-select{ width:auto; flex:0 0 66px; min-height:38px; padding:4px 6px; }
+  .cteil-nummern{ flex:1 1 160px; min-height:38px; }
+
+  @media (max-width:640px){
+    .cteil-select{ flex:0 0 58px; }
   }
 </style>
 </head>
@@ -250,7 +268,10 @@
   </div>
 
   <hr>
-  <button id="btn-neuer-eintrag">+ Neuer Eintrag</button>
+  <div class="top-actions">
+    <button id="btn-neuer-eintrag">+ Neuer Eintrag</button>
+    <div id="kapitel-anzeige"></div>
+  </div>
   <div id="eintraege" style="margin-top:14px;"></div>
 </div>
 
@@ -265,7 +286,10 @@
    Klassenbuch – schlanke, Zumpad-artige Oberfläche auf Firebase RTDB.
    Datenmodell (bewusst kurze Schlüssel, um Speicher/Bandbreite zu sparen):
      kb/{standort}/m/{kursId}         = { n:Name, t:Teilnehmer, r:Raum, v:von, b:bis }
-     kb/{standort}/e/{kursId}/{eid}   = { d:Datum, k:Kursleiter, i:Inhalt, h:Hausaufgaben }
+     kb/{standort}/e/{kursId}/{eid}   = { d:Datum, k:Kursleiter, i:Inhalt, h:Hausaufgaben,
+                                           kn:Kapitel-Nr (1-8), cu:Übungen Teil C (Freitext) }
+     kb/{standort}/kap/{kursId}/aktuell = zuletzt eingestellte Kapitel-Nr (1-8), wird als
+       Vorgabe für neue Einträge und für die Kapitel-Anzeige oben verwendet.
    - standort ist 'kasumigaseki' oder 'sagami-ono': zwei komplett getrennte
      Kursübersichten im selben Firebase-Projekt.
    - Meta- und Eintragsdaten liegen in getrennten Zweigen: die Kursliste
@@ -295,6 +319,7 @@ let standort = null; // 'kasumigaseki' | 'sagami-ono' – trennt die beiden Kurs
 const STANDORT_ANZEIGE = { kasumigaseki: 'Kasumigaseki', 'sagami-ono': 'Sagami\u2011Ōno' };
 function kbM(){ return `kb/${standort}/m`; }
 function kbE(kursId){ return `kb/${standort}/e/${kursId}`; }
+function kapKurs(kursId){ return `kb/${standort}/kap/${kursId}`; }
 
 const $ = id => document.getElementById(id);
 
@@ -409,8 +434,8 @@ function kursLoeschen(id){
   if(!adminUnlocked){ alert('Die Löschfunktion ist gesperrt. Bitte zuerst mit dem Kennwort für „Administration" entsperren.'); return; }
   const k = kurseCache[id] || {};
   if(!confirm(`Kurs „${k.n || ''}" inklusive aller Einträge unwiderruflich löschen?`)) return;
-  if(currentKursId === id) db.ref(kbE(id)).off();
-  Promise.all([db.ref(kbM() + '/' + id).remove(), db.ref(kbE(id)).remove()])
+  if(currentKursId === id){ db.ref(kbE(id)).off(); }
+  Promise.all([db.ref(kbM() + '/' + id).remove(), db.ref(kbE(id)).remove(), db.ref(kapKurs(id)).remove()])
     .then(() => { if(currentKursId === id){ currentKursId = null; showView('liste'); } })
     .catch(err => alert('Konnte Kurs nicht löschen:\n' + err.message));
 }
@@ -447,6 +472,7 @@ $('btn-neu-speichern').addEventListener('click', () => {
 function openKurs(id){
   currentKursId = id;
   entriesCache = {};
+  kapitelAktuellNr = 1;
   renderMetaBox();
   $('kurs-meta-edit').hidden = true;
   showView('kurs');
@@ -462,10 +488,18 @@ function openKurs(id){
   }, err => {
     $('eintraege').innerHTML = '<p class="leer">Fehler beim Laden der Einträge: ' + escHtml(err.message) + '</p>';
   });
+  db.ref(kapKurs(id) + '/aktuell').off();
+  db.ref(kapKurs(id) + '/aktuell').on('value', snap => {
+    kapitelAktuellNr = snap.val() || 1;
+    renderKapitelAnzeige();
+  });
 }
 
 $('btn-zurueck').addEventListener('click', () => {
-  if(currentKursId) db.ref(kbE(currentKursId)).off();
+  if(currentKursId){
+    db.ref(kbE(currentKursId)).off();
+    db.ref(kapKurs(currentKursId) + '/aktuell').off();
+  }
   currentKursId = null;
   showView('liste');
 });
@@ -526,7 +560,7 @@ $('eintraege').addEventListener('focusout', () => {
 $('btn-neuer-eintrag').addEventListener('click', () => {
   const heute = new Date().toISOString().slice(0,10);
   const ref = db.ref(kbE(currentKursId)).push();
-  ref.set({ d: heute, k: '', i: '', h: '' })
+  ref.set({ d: heute, k: '', i: '', h: '', kn: kapitelAktuellNr, cu: '' })
     .catch(err => alert('Konnte Eintrag nicht anlegen:\n' + err.message));
 });
 
@@ -535,21 +569,18 @@ function renderEintraege(){
   const ids = Object.keys(entriesCache).sort().reverse(); // neueste zuerst
   if(ids.length === 0){
     box.innerHTML = '<p class="leer">Noch keine Einträge. Mit „+ Neuer Eintrag" beginnen.</p>';
+    renderKapitelAnzeige();
     return;
   }
   box.innerHTML = ids.map((eid, idx) => {
     const e = entriesCache[eid] || {};
+    const kn = Number(e.kn) || 1;
     return `<div class="eintrag" data-eid="${eid}">
       <button class="btn-del${idx === 0 ? '' : ' admin-only'}" title="Eintrag löschen">✕</button>
       <label>Weitermachen mit …</label>
       <div class="feldbox" data-field="h">
         <div class="feld-anzeige" data-placeholder="Weitermachen mit …">${e.h ? linkify(escHtml(e.h)) : ''}</div>
         <textarea class="feld-edit" hidden placeholder="Weitermachen mit …">${escHtml(e.h)}</textarea>
-      </div>
-      <label>Anmerkung!</label>
-      <div class="feldbox" data-field="a">
-        <div class="feld-anzeige" data-placeholder="z.B. Seite 34 ausgelassen, weil …">${e.a ? linkify(escHtml(e.a)) : ''}</div>
-        <textarea class="feld-edit" hidden placeholder="z.B. Seite 34 ausgelassen, weil …">${escHtml(e.a)}</textarea>
       </div>
       <div class="kopf">
         <div><label>Datum</label><input type="date" data-field="d" value="${escHtml(e.d)}"></div>
@@ -560,13 +591,36 @@ function renderEintraege(){
         <div class="feld-anzeige" data-placeholder="Inhalt / Hausaufgabe…">${e.i ? linkify(escHtml(e.i)) : ''}</div>
         <textarea class="feld-edit" hidden placeholder="Inhalt / Hausaufgabe…">${escHtml(e.i)}</textarea>
       </div>
+      <div class="cteil-row">
+        <span class="cteil-tag">Kapitel</span>
+        <select class="cteil-select" data-field="kn">
+          ${Array.from({length:8}, (_,i)=>i+1).map(n => `<option value="${n}"${n===kn?' selected':''}>${n}</option>`).join('')}
+        </select>
+        <span class="cteil-tag">Übungen C-Teil:</span>
+        <input type="text" class="cteil-nummern" data-field="cu" value="${escHtml(e.cu)}" placeholder="z. B. 3, 5/7, 9">
+      </div>
     </div>`;
   }).join('');
 
   box.querySelectorAll('.eintrag').forEach(card => {
     const eid = card.dataset.eid;
     card.querySelectorAll('input[data-field]').forEach(el => {
-      el.addEventListener('input', () => saveField(`${eid}_${el.dataset.field}`, eid, el.dataset.field, el.value));
+      el.addEventListener('input', () => {
+        if(!entriesCache[eid]) entriesCache[eid] = {};
+        entriesCache[eid][el.dataset.field] = el.value;
+        saveField(`${eid}_${el.dataset.field}`, eid, el.dataset.field, el.value);
+        if(el.dataset.field === 'cu') renderKapitelAnzeige();
+      });
+    });
+    card.querySelector('.cteil-select').addEventListener('change', el0 => {
+      const el = el0.target;
+      const nr = Number(el.value) || 1;
+      if(!entriesCache[eid]) entriesCache[eid] = {};
+      entriesCache[eid].kn = nr;
+      saveField(`${eid}_kn`, eid, 'kn', nr);
+      kapitelAktuellNr = nr;
+      db.ref(kapKurs(currentKursId) + '/aktuell').set(nr).catch(() => {});
+      renderKapitelAnzeige();
     });
     card.querySelectorAll('.feldbox').forEach(wrap => {
       const field = wrap.dataset.field;
@@ -602,11 +656,14 @@ function renderEintraege(){
       if(confirm('Diesen Eintrag wirklich löschen?')){
         card.remove();
         delete entriesCache[eid];
+        renderKapitelAnzeige();
         db.ref(`${kbE(currentKursId)}/${eid}`).remove()
           .catch(err => { alert('Konnte Eintrag nicht löschen:\n' + err.message); renderEintraege(); });
       }
     });
   });
+
+  renderKapitelAnzeige();
 }
 
 const saveField = debounce((eid, field, value) => {
@@ -662,6 +719,29 @@ $('btn-pw-anzeigen').addEventListener('click', () => {
 $('btn-standort-kasumigaseki').addEventListener('click', () => versucheAnmeldung('kasumigaseki'));
 $('btn-standort-sagami-ono').addEventListener('click', () => versucheAnmeldung('sagami-ono'));
 
+/* ---------- Kapitel-Anzeige (Kapitel-Nr + erledigte Übungen Teil C) ---------- */
+
+let kapitelAktuellNr = 1; // zuletzt eingestellte Kapitel-Nr (aus kap/{kursId}/aktuell), Vorgabe für neue Einträge
+
+function kapitelNummernSammeln(){
+  // Alle C-Teil-Nummern der Einträge mit derselben Kapitel-Nr wie kapitelAktuellNr einsammeln,
+  // Trennzeichen Leerzeichen/Schrägstrich/Komma, eindeutig und numerisch sortiert.
+  const gefunden = new Set();
+  Object.values(entriesCache).forEach(e => {
+    const kn = Number(e?.kn) || 1;
+    if(kn !== kapitelAktuellNr) return;
+    String(e?.cu || '').split(/[\s,\/]+/).map(s => s.trim()).filter(Boolean).forEach(n => gefunden.add(n));
+  });
+  return Array.from(gefunden).sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
+}
+
+function renderKapitelAnzeige(){
+  const box = $('kapitel-anzeige');
+  if(!box) return;
+  const nummern = kapitelNummernSammeln();
+  box.innerHTML = `Kapitel <b>${kapitelAktuellNr}</b> &nbsp;Gemachte Übungen C-Teil: <b>${nummern.length ? escHtml(nummern.join(', ')) : '–'}</b>`;
+}
+
 /* ---------- Daten speichern: Kurse als PDF ---------- */
 
 async function pdfKurseExportieren(ids, btn){
@@ -697,13 +777,13 @@ async function pdfKurseExportieren(ids, btn){
 
       const zeilen = eintraegeIds.map(eid => {
         const e = eintraegeObj[eid];
-        return [fmtDatum(e.d) || '–', e.k || '–', e.i || '–', e.h || '–', e.a || ''];
+        return [fmtDatum(e.d) || '–', e.k || '–', e.i || '–', e.h || '–'];
       });
 
       doc.autoTable({
         startY: y + 10,
-        head: [['Datum', 'Kursleitende/r', 'Inhalt / Hausaufgabe', 'Weiter machen mit …', 'Anmerkung']],
-        body: zeilen.length ? zeilen : [['–', '–', 'Keine Einträge vorhanden', '–', '']],
+        head: [['Datum', 'Kursleitende/r', 'Inhalt / Hausaufgabe', 'Weiter machen mit …']],
+        body: zeilen.length ? zeilen : [['–', '–', 'Keine Einträge vorhanden', '–']],
         theme: 'grid',
         styles:{ fontSize:9, cellPadding:5, textColor:[0,0,0], lineColor:[0,0,0], lineWidth:0.5, overflow:'linebreak', valign:'top' },
         headStyles:{ fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.5 },
@@ -711,12 +791,12 @@ async function pdfKurseExportieren(ids, btn){
         willDrawCell: data => {
           // Text dieser Zellen selbst zeichnen (siehe didDrawCell), damit Links klickbar werden.
           // Die Zeilenhöhe wurde vorher bereits anhand des Originaltexts korrekt berechnet.
-          if(data.section === 'body' && data.column.index >= 2 && data.column.index <= 4){
+          if(data.section === 'body' && (data.column.index === 2 || data.column.index === 3)){
             data.cell.text = [];
           }
         },
         didDrawCell: data => {
-          if(data.section !== 'body' || data.column.index < 2 || data.column.index > 4) return;
+          if(data.section !== 'body' || (data.column.index !== 2 && data.column.index !== 3)) return;
           const roh = String(data.cell.raw ?? '');
           const padLinks = data.cell.padding('left');
           const padOben = data.cell.padding('top');
@@ -767,8 +847,8 @@ async function datensicherungErstellen(){
   btn.disabled = true; btn.textContent = 'Sichere …';
   try{
     const snap = await db.ref(`kb/${standort}`).once('value');
-    const daten = snap.val() || { m:{}, e:{} };
-    const inhalt = JSON.stringify({ standort, erstellt: new Date().toISOString(), m: daten.m || {}, e: daten.e || {} }, null, 2);
+    const daten = snap.val() || { m:{}, e:{}, kap:{} };
+    const inhalt = JSON.stringify({ standort, erstellt: new Date().toISOString(), m: daten.m || {}, e: daten.e || {}, kap: daten.kap || {} }, null, 2);
     const blob = new Blob([inhalt], { type:'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -790,7 +870,7 @@ async function wiederherstellungUebernehmen(){
   btn.disabled = true; btn.textContent = 'Ersetze Daten …';
   try{
     await db.ref(`kb/${standort}`).remove();
-    await db.ref(`kb/${standort}`).set({ m: pendingWiederherstellung.m || {}, e: pendingWiederherstellung.e || {} });
+    await db.ref(`kb/${standort}`).set({ m: pendingWiederherstellung.m || {}, e: pendingWiederherstellung.e || {}, kap: pendingWiederherstellung.kap || {} });
     pendingWiederherstellung = null;
     $('wiederherstellung-vorschau').hidden = true;
     $('datei-wiederherstellung').value = '';
@@ -826,7 +906,7 @@ $('datei-wiederherstellung').addEventListener('change', ev => {
       alert('Diese Datei sieht nicht wie eine Klassenbuch-Datensicherung aus.');
       return;
     }
-    pendingWiederherstellung = { m: daten.m || {}, e: daten.e || {} };
+    pendingWiederherstellung = { m: daten.m || {}, e: daten.e || {}, kap: daten.kap || {} };
     const kursIds = Object.keys(pendingWiederherstellung.m);
     const gesamtEintraege = Object.values(pendingWiederherstellung.e).reduce((sum, ee) => sum + Object.keys(ee || {}).length, 0);
     $('wiederherstellung-info').textContent =
